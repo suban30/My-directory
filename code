@@ -1,0 +1,82 @@
+#!/usr/bin/env python
+#import requests
+import json
+import urllib
+from flask import Flask, jsonify
+from flask import request
+from flask import abort
+import os.path
+import re
+import random
+import sys
+import time
+import xml.etree.ElementTree as ET
+import logging
+baseurl="http://10.53.254.21:5000/directory"
+app = Flask(__name__)
+app.config['CORS_HEADERS'] = 'Content-Type'
+filepath= 'C:\\StationDirectory\\wwwroot\\'
+
+@app.route('/')
+def index():
+    return "This is My Directory!"
+
+@app.route('/xml/<filename>')
+def xml(filename):
+	result = open(filepath+filename, 'r').read()
+	return result, {'Content-Type': 'text/xml'}
+
+@app.route('/directory', methods=['GET'])
+def Directory():
+	site = request.args.get('site')
+	try:
+		page = request.args.get('page')
+		p=int(page)
+	except:
+		page="0"
+		p = int (page)
+	xmlfile=filepath+site+'.xml'
+	tree = ET.parse(xmlfile)
+	numEntries=0
+	for directoryEntry in tree.findall('DirectoryEntry'):
+		numEntries=numEntries+1
+	if numEntries <= 30:
+		result = open(xmlfile, 'r').read()
+		return result, {'Content-Type': 'text/xml'}
+	else:
+		if (numEntries % 30) >0:
+			totalPages= (numEntries//30)+1
+		else:
+			totalPages= numEntries // 30
+		xmlOutput= "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n"
+		title=tree.find('Title').text
+		prompt=tree.find('Prompt').text
+		prompt='Page '+str(p+1)+' of '+str(totalPages)
+		xmlOutput=xmlOutput+ "<CiscoIPPhoneDirectory>\n <Title>"+title+"</Title>\n <Prompt>"+prompt+"</Prompt>\n"
+		i=0
+		isNextPage =False
+		for directoryEntry in tree.findall('DirectoryEntry'):
+			i=i+1
+			if (i > p*30) and (i <= (p+1)*30):
+				xmlOutput=xmlOutput+ (ET.tostring(directoryEntry, encoding="unicode", method="xml"))
+			elif i> (p+1)*30:
+				isNextPage= True
+		if isNextPage:
+			DialSoftkey= "<SoftKeyItem>\n <Name>Dial</Name>\n <URL>SoftKey:Dial</URL>\n <Position>1</Position>\n </SoftKeyItem>\n"
+			EditDialSoftkey= "<SoftKeyItem>\n <Name>EditDial</Name>\n <URL>SoftKey:EditDial</URL>\n <Position>2</Position>\n </SoftKeyItem>\n"
+			NextPageSoftkey= "<SoftKeyItem>\n <Name>NextPage</Name>\n <URL>"+baseurl+"?site="+site+"&amp;page="+str(p+1)+"</URL>\n <Position>3</Position>\n </SoftKeyItem>\n"
+			ExitSoftkey= "<SoftKeyItem>\n <Name>Exit</Name>\n <URL>SoftKey:Exit</URL>\n <Position>4</Position>\n </SoftKeyItem>\n"
+			xmlOutput=xmlOutput+DialSoftkey+EditDialSoftkey+NextPageSoftkey+ExitSoftkey
+		xmlOutput=xmlOutput+ "</CiscoIPPhoneDirectory>\n"
+		return xmlOutput,{'Content-Type': 'text/xml'}
+			
+if __name__ == '__main__':
+    try:
+        logging.basicConfig(filename='C:\\StationDirectory\\logs\\messages.log',level=logging.DEBUG)
+        app.run(host='0.0.0.0', port=5000, debug=True)     
+    except KeyboardInterrupt:
+        pass
+    finally:
+        print('closing connection....')
+
+
